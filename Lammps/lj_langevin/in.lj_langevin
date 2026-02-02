@@ -1,0 +1,34 @@
+# LJ fluid + Langevin thermostat (beginner starter)
+
+units           lj
+atom_style      atomic
+boundary        p p p
+
+region          box block 0 20 0 20 0 20
+create_box      1 box
+create_atoms    1 random 2000 12345 box overlap 0.9
+
+mass            1 1.0
+
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+
+# --- neighbor list: make it safer (reduce "dangerous builds")
+neighbor        1.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+velocity        all create 1.0 98765 mom yes rot yes dist gaussian
+
+timestep        0.005
+
+thermo          200
+thermo_style    custom step temp pe ke etotal press density
+
+fix             int all nve
+fix             th  all langevin 1.0 1.0 1.0 24680
+
+
+dump            d1 all atom 1000 traj.lammpstrj
+dump_modify     d1 sort id
+
+run             200000

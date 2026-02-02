@@ -1,0 +1,24 @@
+# Ignore large simulation outputs
+*.npz
+*.npy
+*.xyz
+*.log
+*.json
+*.jsonl
+*__chunks/
+
+# Common local/compiled cruft
+__pycache__/
+*.pyc
+*.nbc
+*.nbi
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+
+# Lammps data output
+*.lammps
+*.lammpstrj
+*.dump
+*.out
+*.txt

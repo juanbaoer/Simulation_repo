@@ -1,0 +1,160 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[margin=1in]{geometry}
+
+\begin{document}
+
+\begin{algorithm}[t]
+\caption{KA2D Metropolis Monte Carlo (burn-in, interval sampling; unwrapped trajectory)}
+\label{alg:ka2d-mc}
+\textbf{Notation.}
+$i\in\{1,\dots,N\}$, types $\boldsymbol{\tau}=(\tau_i)$.
+Unwrapped positions $\mathbf{y}_i\in\mathbb{R}^2$ and wrapped positions
+$\mathbf{x}_i=\mathcal{W}_L(\mathbf{y}_i)\in[0,L)^2$, with componentwise wrap
+$\mathcal{W}_L(\mathbf{z})=\mathbf{z}\bmod L$.
+Total energy $U(\mathbf{x},\boldsymbol{\tau};L)$ and single-particle energy change $\Delta U_i$.
+
+\begin{algorithmic}[1]
+\Require $N,\rho,T$; potential params $\theta=(\varepsilon,\sigma,C_0,C_2,C_4,r_\mathrm{cut})$;
+        initial step size $d_0$, RNG seed;
+        tuning $(autotune,\alpha^\star,\Delta_{\mathrm{tune}})$;
+        burn-in $n_b$, sample interval $\Delta$, \#samples $S$
+\Ensure $\{(\mathbf{x}^{(s)},\mathbf{y}^{(s)},E^{(s)})\}_{s=0}^{S-1}$, $\boldsymbol{\tau}$, $L$, acceptance trace (optional)
+
+\State $\beta \gets 1/T$; $L \gets \sqrt{N/\rho}$
+\State $\boldsymbol{\tau}\gets$ composition vector; random permutation (seeded)
+\State $\mathbf{y}_i \sim \mathrm{Unif}([0,L)^2)$; $\mathbf{x}_i \gets \mathbf{y}_i$ \Comment{$\mathbf{x}_i=\mathcal{W}_L(\mathbf{y}_i)$ initially}
+\State $E \gets U(\mathbf{x},\boldsymbol{\tau};L)$; $d\gets d_0$
+
+\State $(E,d)\gets \Call{RunBlock}{n_b,\,E,\,d}$ \Comment{burn-in}
+\For{$s=0$ to $S-1$}
+  \State $(E,d)\gets \Call{RunBlock}{\Delta,\,E,\,d}$
+  \State $\mathbf{x}^{(s)}\gets \mathbf{x}$; $\mathbf{y}^{(s)}\gets \mathbf{y}$; $E^{(s)}\gets E$
+\EndFor
+\end{algorithmic}
+
+\vspace{0.5em}
+\textbf{Subroutines.}
+\begin{algorithmic}[1]
+\Function{RunBlock}{$n,\,E,\,d$}
+  \For{$t=1$ to $n$}
+    \State $(E,a)\gets \Call{Sweep}{E,\,d}$
+    \State record $a/N$ (optional; see Acceptance Logging)
+    \If{$autotune \land (t \bmod \Delta_{\mathrm{tune}} = 0)$}
+      \State $\bar{\alpha}\gets$ mean acceptance over last $\Delta_{\mathrm{tune}}$ sweeps
+      \State $d\gets d\cdot\bigl(0.9\,\mathbb{I}[\bar{\alpha}<\alpha^\star]+1.1\,\mathbb{I}[\bar{\alpha}\ge\alpha^\star]\bigr)$
+      \State $d\gets \min(\max(d,0.01),0.8)$
+    \EndIf
+  \EndFor
+  \State \Return $(E,d)$
+\EndFunction
+
+\Function{Sweep}{$E,\,d$}
+  \State $a\gets 0$
+  \For{$m=1$ to $N$} \Comment{$N$ trial moves / sweep}
+    \State $i\sim \mathrm{Unif}\{1,\dots,N\}$
+    \State $\boldsymbol{\delta}\sim \mathrm{Unif}([-d,d]^2)$
+    \State $\mathbf{y}_i^\star \gets \mathbf{y}_i+\boldsymbol{\delta}$; $\mathbf{x}_i^\star \gets \mathcal{W}_L(\mathbf{x}_i+\boldsymbol{\delta})$
+    \State $\Delta U_i \gets U_i(\mathbf{x}_i^\star;\mathbf{x}_{\neg i},\boldsymbol{\tau},L)-U_i(\mathbf{x}_i;\mathbf{x}_{\neg i},\boldsymbol{\tau},L)$
+    \State $\alpha \gets \min\!\left(1,e^{-\beta\,\Delta U_i}\right)$; $u\sim \mathrm{Unif}[0,1]$
+    \If{$u<\alpha$}
+      \State $\mathbf{x}_i\gets \mathbf{x}_i^\star$; $\mathbf{y}_i\gets \mathbf{y}_i^\star$; $E\gets E+\Delta U_i$; $a\gets a+1$
+    \EndIf
+  \EndFor
+  \State \Return $(E,a)$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\section*{Acceptance Logging (Implementation Details)}
+\textbf{Goal.} Record sweep-level acceptance ratios without storing full trajectories in RAM.
+
+\begin{enumerate}
+  \item \textbf{Per-sweep ratio.} In each sweep, the code attempts \(N\) single-particle moves and counts accepted moves \(a\). The recorded value is \(a/N\) (a float per sweep).
+  \item \textbf{Recording windows.} When \texttt{n\_samples = 0}, acceptance is recorded for \emph{all} sweeps. When \texttt{n\_samples > 0}, acceptance is recorded \emph{only during sampling}: the first (unsaved) sampling window of length \(\Delta\), plus each saved window thereafter. Burn-in sweeps are not recorded.
+  \item \textbf{Storage.} Acceptance ratios are appended into a preallocated memmap array \texttt{acceptance.npy} with length
+  \[
+    \texttt{acc\_len} =
+    \begin{cases}
+      \texttt{sweeps} & \text{if } n\_\text{samples}=0 \\
+      \Delta \cdot (1 + n\_\text{saved}) & \text{if } n\_\text{samples}>0
+    \end{cases}
+  \]
+  and sweep indices are stored in parallel in \texttt{acceptance\_sweep.npy} as a simple 0-based counter. These indices refer to \emph{recorded} sweeps (sampling-only), not absolute sweeps including burn-in.
+  \item \textbf{Summary metrics.} The run reports \texttt{acceptance\_mean} as the average of recorded values, and stores \texttt{acceptance\_count} (written length) and \texttt{acceptance\_expected} (preallocated length) in the manifest metadata.
+\end{enumerate}
+
+\section*{Random Seed Handling in \texttt{Ka2d\_random\_seed.py}}
+\textbf{Goal.} A single user seed controls all randomness: NumPy PCG64 for type shuffling and initialization, and Numba's legacy RNG for in-kernel \texttt{np.random.*} calls.
+
+\begin{enumerate}
+  \item \textbf{Seed routing.} If \texttt{cfg.seed} is not \texttt{None}, build a \texttt{SeedSequence} and spawn three child streams: (\textit{i}) \texttt{rng\_types} for shuffling types, (\textit{ii}) \texttt{rng\_pos} for initial positions, (\textit{iii}) \texttt{seed\_numba\_int} (a 32-bit integer) for Numba's legacy RNG. If \texttt{cfg.seed} is \texttt{None}, all RNGs are left unseeded (OS entropy).
+  \item \textbf{Python-side draws.} Types are shuffled with \texttt{rng\_types.shuffle}; initial wrapped positions are drawn via \texttt{rng\_pos.random((N,2)) * box}. These are reproducible for a fixed \texttt{cfg.seed}.
+  \item \textbf{Numba seeding.} A tiny \texttt{@njit} helper \texttt{\_seed\_numba(seed\_int)} calls \texttt{np.random.seed(seed\_int)}. It is invoked exactly once at the start of \texttt{run()} when \texttt{cfg.seed} is set, before any MC sweeps, and never reseeded afterward.
+  \item \textbf{Autotune policy.} Burn-in respects \texttt{cfg.autotune}; sampling forces \texttt{autotune=False} (kernel frozen) without mutating \texttt{cfg.autotune} so metadata remains truthful.
+\item \textbf{Determinism scope.} Same \texttt{cfg.seed} yields identical types, initial positions, and MC trajectories/energies on CPU single-thread execution. Different seeds diverge; \texttt{seed=None} is nondeterministic. Parallel execution may reorder RNG calls and is not guaranteed deterministic.
+\end{enumerate}
+
+\section*{Sample Storage and Appending}
+\textbf{Goal.} Save samples incrementally (append) so runs do not accumulate all samples in RAM and can resume or inspect partial output.
+
+\begin{enumerate}
+  \item \textbf{Chunk directory layout.} Given a base path \texttt{<base>.npz}, the writer builds \texttt{<base>\_\_chunks/} and reserves deterministic file names: \texttt{positions.npy}, \texttt{positions\_real.npy}, optional \texttt{acceptance*.npy}, and single-instance metadata arrays (\texttt{types.npy}, \texttt{box.npy}, \texttt{initial\_positions.npy}, \texttt{final\_positions.npy}, etc.).
+  \item \textbf{Preallocation via memmap.} \texttt{ChunkedStorage} opens each array with \texttt{np.lib.format.open\_memmap(mode=\"w+\")} and an explicit shape \((n\_\text{saved}, N, 2)\) (or \(acc\_\text{len}\)). This allocates the on-disk array once and enables constant-time slice writes.
+  \item \textbf{Append semantics.} Each sample is written by \texttt{write\_sample(pos, pos\_real)}, which assigns into the preallocated memmap at index \texttt{sample\_written} and increments the counter. No buffering of previous samples occurs, so memory stays bounded and order reflects simulation time.
+  \item \textbf{Acceptance trace.} If acceptance is requested, \texttt{write\_acceptance} writes a block of values and records their sweep indices into \texttt{acceptance\_sweep.npy}, again via slicing into the memmap.
+\item \textbf{Manifest + pointer.} \texttt{finalize\_manifest} flushes memmaps, writes a manifest JSON with file paths and metadata, and drops a tiny pointer JSON at the original base path for compatibility. Loading uses \texttt{load\_full\_output}, which reads the manifest and memory-maps the chunked arrays.
+\item \textbf{Why this guarantees append.} Because arrays are preallocated to the target length and every sample write is an in-place slice assignment into a memmap, the code never keeps or rewrites the full sample tensor in memory. The manifest is the only aggregation step, executed after all slice writes complete.
+\end{enumerate}
+
+\section*{Parallel KA2D with Chunked Logging (\texttt{Ka2d\_random\_seed\_optimized\_logging\_append.py})}
+\begin{algorithm}[t]
+\caption{Single run with progress logging and chunked sample writes}
+\label{alg:ka2d-chunked}
+\begin{algorithmic}[1]
+  \State Build params \(\theta\) and config \(cfg\); derive counts, box \(L\), shuffled types, initial positions; precompute \(r_\mathrm{cut}^2\), energy \(E\)
+  \State Allocate \texttt{ChunkedStorage} (memmap arrays sized to \(n\_\text{samples}\) and acceptance length) and \texttt{ProgressLogger}
+  \State Seed Numba RNG once (if \(cfg.seed\) provided); set \(d \gets cfg.max\_disp\), \(\beta \gets 1/T\)
+  \State \textbf{Burn-in:} Run \(cfg.burn\_in\_sweeps\) with autotune; skip recording to save memory; logger records window summaries
+  \State \textbf{Sampling:} For each window of \(cfg.sample\_interval\) sweeps:
+    \State \quad freeze autotune; run interval; append wrapped and real positions via \texttt{write\_sample}; optionally append acceptance window
+    \State \quad log sweep, samples written, acceptance mean
+  \State Flush memmaps; write manifest JSON + pointer; close logger; return metadata (final \(d\), acceptance stats, manifest path)
+\end{algorithmic}
+\end{algorithm}
+
+\section*{Parallel Batch Runner (\texttt{Ka2d\_parallel\_runner.py})}
+\begin{algorithm}[t]
+\caption{Process pool driver over a temperature/replicate grid}
+\label{alg:parallel-runner}
+\begin{algorithmic}[1]
+  \State Validate CONFIG; expand temperature/replicate grid into \(\{\text{JobSpec}\}\) with unique seeds and file names
+  \State Open summary JSONL; choose worker count; submit each job to a \texttt{ProcessPoolExecutor}
+  \State In each worker: set thread env vars; import \texttt{Ka2d\_random\_seed}; optionally disable tqdm; run \texttt{run\_ka2d\_mc} with job params
+  \State Worker computes mean acceptance, mean energy (and per-particle), final step size; returns record with job metadata and save path
+  \State Main process writes each record to summary file and prints concise per-job metrics; tracks completion progress
+\end{algorithmic}
+\end{algorithm}
+
+\section*{Single-Run KA2D with Unified Seed (\texttt{Ka2d\_random\_seed.py})}
+\begin{algorithm}[t]
+\caption{Deterministic KA2D MC with burn-in and interval sampling}
+\label{alg:ka2d-random-seed}
+\begin{algorithmic}[1]
+  \State Build params \(\theta\) and config \(cfg\); derive composition counts, box \(L\), shuffled types (fixed type RNG seed), initial positions
+  \State Split base seed into NumPy stream (positions) and Numba legacy RNG seed; precompute \(r_\mathrm{cut}^2\), initial energy \(E\)
+  \State \textbf{Burn-in:} Run \(cfg.burn\_in\_sweeps\) with autotune to adapt \(d\); do not record sweeps
+  \If{\(cfg.n\_samples = 0\)} \State Run \(cfg.sweeps\) with requested autotune; return traces and final state \EndIf
+  \State \textbf{Sampling:} Freeze autotune; for each interval of \(cfg.sample\_interval\) sweeps:
+    \State \quad run sweeps; store wrapped and real positions; compute and store energy per sample
+    \State \quad capture full sweep-by-sweep positions for the first window (optional diagnostics)
+  \State Return samples, energies, acceptance trace, counts/types/box, initial/final positions, final \(d\); caller may persist results
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

@@ -1,0 +1,111 @@
+# KA2D 2D (strict z=0) - Equilibration then sampling at T=0.5 with Nose-Hoover (NVT)
+# Use: lmp_serial -in in.ka2d_T0p5_equil_sample -var seed 12345 -var runid 000
+
+units           lj
+dimension       2
+atom_style      atomic
+boundary        p p p
+
+# ---------- user variables ----------
+variable        seed  index 20260
+variable seed2 equal v_seed+11111
+variable seed3 equal v_seed+22222
+variable seed4 equal v_seed+33333
+
+variable        runid index 000
+variable        L     equal 6.0
+variable        Tinit equal 0.5
+variable        Tdamp equal 1.0
+variable        dt    equal 0.005
+
+# ---- run lengths ----
+variable        tau_eq    equal 5.0e6
+variable        Neq       equal round(v_tau_eq/v_dt)     # 5e6 tau -> 1e9 steps (dt=0.005)
+variable        dump_tau  equal 10.0
+variable        dumpEvery equal round(v_dump_tau/v_dt)   # 10 tau per frame -> 2000 steps (dt=0.005)
+variable        nFrames   equal 100000
+variable        Nsamp     equal v_nFrames*v_dumpEvery    # 1e5 frames -> 2e8 steps (1e6 tau)
+
+# composition (5:3:3 for N=43 -> 19:12:12)
+variable        N1 equal 19
+variable        N2 equal 12
+variable        N3 equal 12
+
+# ---------- box ----------
+region          box block 0 ${L} 0 ${L} -0.5 0.5
+create_box      3 box
+
+# ---------- create atoms (random, avoid close overlaps) ----------
+create_atoms 1 random ${N1} ${seed}  box overlap 0.70
+create_atoms 2 random ${N2} ${seed2} box overlap 0.70
+create_atoms 3 random ${N3} ${seed3} box overlap 0.70
+
+mass            * 1.0
+
+# strictly set all z = 0
+set             group all z 0.0
+
+# ---------- pair potential (tabulated modified LJ) ----------
+pair_style      table spline 10000
+pair_coeff      1 1 ../../config/ka2d.table AA
+pair_coeff      1 2 ../../config/ka2d.table AB
+pair_coeff      1 3 ../../config/ka2d.table AC
+pair_coeff      2 2 ../../config/ka2d.table BB
+pair_coeff      2 3 ../../config/ka2d.table BC
+pair_coeff      3 3 ../../config/ka2d.table CC
+
+# neighbor list (safe)
+neighbor        0.4 bin
+neigh_modify    delay 0 every 1 check yes
+
+# ---------- remove bad contacts (recommended for random init) ----------
+# min_style       cg
+# minimize        1e-10 1e-10 10000 100000
+
+# ---------- dynamics ----------
+timestep        ${dt}
+velocity all create ${Tinit} ${seed4} mom yes rot no dist gaussian
+
+# Nose-Hoover NVT
+fix             nvt all nvt temp ${Tinit} ${Tinit} ${Tdamp}
+
+# IMPORTANT for 2D: enforce2d should be last fix in script
+fix             p2d all enforce2d
+
+thermo          2000
+thermo_style    custom step temp pe ke etotal press
+
+# Save configs for debugging/reproducibility (initial)
+write_data      T0p5_init_${runid}.data
+write_restart   T0p5_init_${runid}.restart
+
+# =========================
+# 1) Equilibration: 5e6 tau
+# =========================
+print "Equilibration: tau_eq=${tau_eq}, dt=${dt} => Neq=${Neq} steps"
+run             ${Neq}
+write_restart   T0p5_equil_${runid}.restart
+
+# =========================
+# 2) Sampling: 1e5 frames, dump every 10 tau
+# =========================
+reset_timestep  0
+
+# radii_by_type = (0.500, 0.44, 0.47) for type 1/2/3
+variable        rad atom "(type==1)*0.500 + (type==2)*0.440 + (type==3)*0.470"
+
+# wrapped
+dump            dw all custom ${dumpEvery} traj_wrap_${runid}.dump id type x y z v_rad
+dump_modify     dw sort id
+dump_modify     dw pbc yes
+dump_modify     dw colname v_rad radius
+
+# unwrapped
+dump            du all custom ${dumpEvery} traj_unwrap_${runid}.dump id type xu yu zu ix iy iz v_rad
+dump_modify     du sort id
+dump_modify     du colname v_rad radius
+
+print "Sampling: Nsamp=${Nsamp} steps, dumpEvery=${dumpEvery} => frames=${nFrames}"
+run             ${Nsamp}
+
+write_restart   T0p5_sample_${runid}.restart

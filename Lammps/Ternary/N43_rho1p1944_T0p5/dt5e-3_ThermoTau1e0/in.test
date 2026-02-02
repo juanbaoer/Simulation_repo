@@ -1,0 +1,70 @@
+# ============================
+# TEST: Is thermo "pe" total or per-atom?
+# Prints pe with norm yes/no + independent total via sum(pe/atom)
+# ============================
+
+units           lj
+dimension       2
+atom_style      atomic
+boundary        p p p
+
+# ---------- user variables ----------
+variable        seed  index 12345
+variable        L     equal 6.0
+
+# safe derived seeds (guaranteed integers)
+variable seed2 equal v_seed+11111
+variable seed3 equal v_seed+22222
+
+
+# composition (N=43)
+variable        N1 equal 19
+variable        N2 equal 12
+variable        N3 equal 12
+
+# ---------- box ----------
+region          box block 0 ${L} 0 ${L} -0.5 0.5
+create_box      3 box
+
+# ---------- create atoms ----------
+create_atoms    1 random ${N1} ${seed}  box overlap 0.70
+create_atoms    2 random ${N2} ${seed2} box overlap 0.70
+create_atoms    3 random ${N3} ${seed3} box overlap 0.70
+mass            * 1.0
+
+# enforce strict 2D geometry
+set             group all z 0.0
+
+# ---------- pair potential (tabulated) ----------
+pair_style      table spline 10000
+pair_coeff      1 1 ../../config/ka2d.table AA
+pair_coeff      1 2 ../../config/ka2d.table AB
+pair_coeff      1 3 ../../config/ka2d.table AC
+pair_coeff      2 2 ../../config/ka2d.table BB
+pair_coeff      2 3 ../../config/ka2d.table BC
+pair_coeff      3 3 ../../config/ka2d.table CC
+
+# neighbor list (safe)
+neighbor        0.4 bin
+neigh_modify    delay 0 every 1 check yes
+
+# ---------- quick minimize (optional but recommended) ----------
+min_style       cg
+minimize        1e-10 1e-10 1000 10000
+
+# ---------- independent total PE via sum(pe/atom) ----------
+compute         peatom all pe/atom
+compute         pesum  all reduce sum c_peatom
+compute         peavg  all reduce ave c_peatom
+
+thermo          1
+thermo_style    custom step atoms pe c_pesum c_peavg
+
+print "----- TEST A: norm YES -----"
+thermo_modify   norm yes
+run             0
+
+print "----- TEST B: norm NO -----"
+thermo_modify   norm no
+run             0
+

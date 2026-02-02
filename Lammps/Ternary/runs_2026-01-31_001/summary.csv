@@ -1,0 +1,13 @@
+run_id,seed,status,returncode,duration_sec,run_dir
+0007,12945,failed,143,61826.705,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0007
+0003,12545,failed,143,63947.513,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0003
+0012,13445,failed,143,63978.265,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0012
+0008,13045,failed,143,110196.768,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0008
+0001,12345,failed,143,111960.61,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0001
+0005,12745,failed,143,113214.863,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0005
+0011,13345,failed,143,113330.566,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0011
+0004,12645,failed,143,113340.696,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0004
+0002,12445,failed,143,113374.059,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0002
+0006,12845,failed,143,113451.773,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0006
+0009,13145,failed,143,113473.778,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0009
+0010,13245,failed,143,113521.091,/Users/xuhengyuan/Downloads/Notes/Simulation_repo/Lammps/Ternary/runs_2026-01-31_001/run_0010
