@@ -18,31 +18,31 @@ Edit the CONFIG section below and run:
 
 # ============================== CONFIG ==============================
 # Output
-OUT_DIR = "/Users/xuhengyuan/Downloads/Notes/Simulation_repo/MCMC/ternary_glass_forming_liquid/Data/Parallel_Ka2d_runs/N43_L6_beta2"
+OUT_DIR = "/Users/xuhengyuan/Downloads/Notes/Simulation_repo/MCMC/ternary_glass_forming_liquid/Data/Parallel_Ka2d_runs/N22_rho1_beta2"
 OVERWRITE = False
 SUMMARY_FILENAME = "summary.jsonl"
 
 # Parallelism
-WORKERS = 10               # 0 => os.cpu_count()
+WORKERS = 10             # 0 => os.cpu_count()
 NUMBA_THREADS = 2         # threads per worker process
 DISABLE_TQDM = True       # suppress per-worker progress bars
 
 # Simulation sweep/sample settings
 N_SAMPLES = 50000
 BURN_IN_SWEEPS = 2_000_000
-SAMPLE_INTERVAL = 2000
+SAMPLE_INTERVAL = 100
 SWEEPS = 0                # used only when N_SAMPLES == 0
 
 # System/grid
-N = 43
-RHO = 43/36
-RCUT_FACTOR = 2.5
-MAX_DISP = 0.2
-TARGET_ACCEPT = 0.2
+N = 22
+RHO = 1.0
+RCUT_FACTOR = 2.3
+MAX_DISP = 0.3
+TARGET_ACCEPT = 0.3
 
 # Parameter set + composition
 TERNARY = True
-COMPOSITION_RATIO = (20,11,12)  # ternary: 3 ints; binary: 2 ints
+COMPOSITION_RATIO = (5,3,3)  # ternary: 3 ints; binary: 2 ints
 
 # Job grid / naming
 TEMPS = [0.5]
